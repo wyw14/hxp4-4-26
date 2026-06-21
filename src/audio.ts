@@ -4,12 +4,19 @@ export class AudioManager {
   private noiseGainNode: GainNode | null = null;
   private signalOscillator: OscillatorNode | null = null;
   private signalGainNode: GainNode | null = null;
+  private alertOscillator: OscillatorNode | null = null;
+  private alertGainNode: GainNode | null = null;
   private currentVolume: number = 0;
   private targetVolume: number = 0;
   private signalFrequency: number = 0;
   private targetSignalFrequency: number = 0;
   private isInitialized: boolean = false;
   private isEnabled: boolean = false;
+  private alertActive: boolean = false;
+  private alertTimer: number = 0;
+  private alertBeepOn: boolean = false;
+  private alertTargetGain: number = 0;
+  private alertCurrentGain: number = 0;
 
   constructor() {}
 
@@ -56,8 +63,19 @@ export class AudioManager {
       this.signalOscillator.connect(this.signalGainNode);
       this.signalGainNode.connect(this.audioContext.destination);
 
+      this.alertOscillator = this.audioContext.createOscillator();
+      this.alertOscillator.type = 'square';
+      this.alertOscillator.frequency.value = 880;
+
+      this.alertGainNode = this.audioContext.createGain();
+      this.alertGainNode.gain.value = 0;
+
+      this.alertOscillator.connect(this.alertGainNode);
+      this.alertGainNode.connect(this.audioContext.destination);
+
       this.whiteNoiseSource.start();
       this.signalOscillator.start();
+      this.alertOscillator.start();
 
       this.isInitialized = true;
     } catch (e) {
@@ -93,6 +111,14 @@ export class AudioManager {
     }
   }
 
+  setAlertActive(active: boolean): void {
+    this.alertActive = active && this.isEnabled;
+    if (!active) {
+      this.alertTargetGain = 0;
+      this.alertBeepOn = false;
+    }
+  }
+
   update(): void {
     if (!this.noiseGainNode || !this.audioContext || !this.isInitialized) return;
 
@@ -102,6 +128,38 @@ export class AudioManager {
     this.signalFrequency += (this.targetSignalFrequency - this.signalFrequency) * 0.1;
     if (this.signalOscillator) {
       this.signalOscillator.frequency.setValueAtTime(this.signalFrequency, this.audioContext.currentTime);
+    }
+
+    if (this.alertActive) {
+      this.alertTimer += 0.016;
+      const beepDuration = 0.12;
+      const beepInterval = 0.35;
+      const cycleTime = this.alertTimer % beepInterval;
+
+      if (cycleTime < beepDuration && !this.alertBeepOn) {
+        this.alertBeepOn = true;
+        this.alertTargetGain = 0.12;
+        if (this.alertOscillator) {
+          this.alertOscillator.frequency.setValueAtTime(
+            Math.random() > 0.5 ? 880 : 1100,
+            this.audioContext.currentTime
+          );
+        }
+      } else if (cycleTime >= beepDuration && this.alertBeepOn) {
+        this.alertBeepOn = false;
+        this.alertTargetGain = 0;
+      }
+    } else {
+      this.alertTargetGain = 0;
+    }
+
+    this.alertCurrentGain += (this.alertTargetGain - this.alertCurrentGain) * 0.2;
+    if (this.alertGainNode) {
+      this.alertGainNode.gain.setTargetAtTime(
+        Math.max(0, this.alertCurrentGain),
+        this.audioContext.currentTime,
+        0.01
+      );
     }
   }
 
@@ -117,6 +175,9 @@ export class AudioManager {
     }
     if (this.signalOscillator) {
       try { this.signalOscillator.stop(); } catch {}
+    }
+    if (this.alertOscillator) {
+      try { this.alertOscillator.stop(); } catch {}
     }
     if (this.audioContext) {
       this.audioContext.close();

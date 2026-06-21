@@ -31,6 +31,8 @@ class Game {
   private signalOverlayActive: boolean = false;
   private binaryStream: string = '';
   private binaryTimer: number = 0;
+  private emergencyActive: boolean = false;
+  private emergencyFadeOut: boolean = false;
 
   private elements: {
     signalFill: HTMLElement;
@@ -40,6 +42,8 @@ class Game {
     binaryStream: HTMLElement;
     foundCount: HTMLElement;
     audioToggle: HTMLButtonElement;
+    edgePulse: HTMLElement;
+    alertBar: HTMLElement;
   };
 
   constructor() {
@@ -61,7 +65,9 @@ class Game {
       signalDescription: get('signalOverlay').querySelector('.signal-description') as HTMLElement,
       binaryStream: get('signalOverlay').querySelector('.binary-stream') as HTMLElement,
       foundCount: get('foundCount'),
-      audioToggle: get('audioToggle') as HTMLButtonElement
+      audioToggle: get('audioToggle') as HTMLButtonElement,
+      edgePulse: get('edgePulse'),
+      alertBar: get('alertBar')
     };
   }
 
@@ -194,6 +200,38 @@ class Game {
     }
   }
 
+  private updateEmergencyEffects(): void {
+    const isEmergencySignal = this.currentMatch.signal?.id === 'signal_01';
+    const emergencyThreshold = 0.65;
+    const shouldBeActive = isEmergencySignal && this.smoothedStrength > emergencyThreshold;
+
+    if (shouldBeActive && !this.emergencyActive) {
+      this.emergencyActive = true;
+      this.emergencyFadeOut = false;
+      this.elements.edgePulse.classList.remove('fade-out');
+      this.elements.alertBar.classList.remove('fade-out');
+      this.elements.edgePulse.classList.add('active');
+      this.elements.alertBar.classList.add('active');
+      this.audioManager.setAlertActive(true);
+    } else if (!shouldBeActive && this.emergencyActive && !this.emergencyFadeOut) {
+      this.emergencyFadeOut = true;
+      this.elements.edgePulse.classList.remove('active');
+      this.elements.alertBar.classList.remove('active');
+      this.elements.edgePulse.classList.add('fade-out');
+      this.elements.alertBar.classList.add('fade-out');
+      this.audioManager.setAlertActive(false);
+
+      window.setTimeout(() => {
+        if (this.emergencyFadeOut) {
+          this.emergencyActive = false;
+          this.emergencyFadeOut = false;
+          this.elements.edgePulse.classList.remove('fade-out');
+          this.elements.alertBar.classList.remove('fade-out');
+        }
+      }, 600);
+    }
+  }
+
   private animate(): void {
     if (this.weatherSystem) {
       const weatherResult = this.weatherSystem.update();
@@ -227,6 +265,7 @@ class Game {
       this.audioManager.update();
 
       this.updateUI();
+      this.updateEmergencyEffects();
     }
 
     requestAnimationFrame(() => this.animate());
